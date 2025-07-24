@@ -1,0 +1,105 @@
+{
+  "session_data": {
+    "session_id": "test-session-123",
+    "session_title": "YouTube Analytics Demo",
+    "video_count": 3,
+    "total_video_ids": 3,
+    "timestamp": "2025-06-11T10:30:00Z",
+    "created_at": "2025-06-11T10:00:00Z",
+    "updated_at": "2025-06-11T10:30:00Z",
+    "description": "Demo session for testing dashboard generation"
+  },
+  "visualization_results": [
+    {
+      "type": "engagement_chart",
+      "success": true,
+      "chart_type": "bar",
+      "data_points": 3,
+      "total_views": 1500000,
+      "max_value": 800000,
+      "data": {
+        "result": {
+          "success": true,
+          "video_count": 3,
+          "chart_type": "bar"
+        }
+      }
+    },
+    {
+      "type": "html_chart",
+      "success": true,
+      "chart_type": "bar",
+      "data_points": 3,
+      "total_views": 1500000,
+      "max_views": 800000,
+      "avg_views": 500000
+    },
+    {
+      "type": "word_cloud",
+      "success": true,
+      "data": {
+        "result": {
+          "success": true,
+          "text_count": 3,
+          "source_type": "titles"
+        }
+      }
+    }
+  ],
+  "video_analysis_data": {
+    "analysis_results": [
+      {
+        "video_source": "rfscVS0vtbw",
+        "extraction_info": {
+          "total_frames_extracted": 15
+        },
+        "frame_analyses": [
+          {
+            "frame": 1
+          },
+          {
+            "frame": 2
+          }
+        ]
+      },
+      {
+        "video_source": "_uQrJ0TkZlc",
+        "extraction_info": {
+          "total_frames_extracted": 12
+        },
+        "frame_analyses": [
+          {
+            "frame": 1
+          },
+          {
+            "frame": 2
+          }
+        ]
+      }
+    ],
+    "processing_summary": {
+      "successful_videos": 2,
+      "total_videos": 2
+    }
+  },
+  "engagement_data": {
+    "analysis": [
+      {
+        "video_id": "rfscVS0vtbw",
+        "title": "Learn Python - Full Course for Beginners",
+        "metrics": {
+          "engagement_rate": 2.5,
+          "performance_score": 85000
+        }
+      },
+      {
+        "video_id": "_uQrJ0TkZlc",
+        "title": "Python Full Course for Beginners",
+        "metrics": {
+          "engagement_rate": 1.8,
+          "performance_score": 72000
+        }
+      }
+    ]
+  }
+}

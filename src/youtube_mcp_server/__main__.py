@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""
+YouTube MCP Server main entry point.
+"""
+
+import asyncio
+import logging
+import sys
+from mcp.server import Server
+from mcp.server.models import InitializationOptions
+from mcp.server.stdio import stdio_server
+from mcp.server.lowlevel.server import NotificationOptions
+import mcp.server.stdio
+import mcp.types as types
+
+from .core.config import YouTubeMCPConfig
+from .tools.core_tools import YouTubeMCPTools
+
+# Configure logging to go to stderr only
+logging.basicConfig(
+    level=logging.WARNING,  # Reduce log level for MCP
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stderr,  # Send logs to stderr, not stdout
+    force=True
+)
+
+logger = logging.getLogger(__name__)
+
+
+async def main():
+    """Main entry point for YouTube MCP Server."""
+    youtube_tools = None
+    try:
+        # Load configuration
+        config = YouTubeMCPConfig()
+        
+        # Initialize YouTube tools
+        youtube_tools = YouTubeMCPTools(config)
+        await youtube_tools.initialize()
+        
+        # Create MCP server
+        server = Server("youtube-mcp-server")
+        
+        @server.list_tools()
+        async def handle_list_tools() -> list[types.Tool]:
+            """List available tools."""
+            try:
+                return youtube_tools.get_tools()
+            except Exception as e:
+                logger.error(f"Error listing tools: {e}")
+                return []
+        
+        @server.call_tool()
+        async def handle_call_tool(
+            name: str, arguments: dict | None
+        ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+            """Handle tool calls."""
+            try:
+                if arguments is None:
+                    arguments = {}
+                return await youtube_tools.execute_tool(name, arguments)
+            except Exception as e:
+                logger.error(f"Error executing tool {name}: {e}")
+                return [types.TextContent(type="text", text=f"Error: {str(e)}")]
+        
+        # Run the server (no logging to avoid stdout contamination)
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                await server.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name="youtube-mcp-server",
+                        server_version="1.0.0",
+                        capabilities=server.get_capabilities(
+                            notification_options=NotificationOptions(
+                                prompts_changed=False,
+                                resources_changed=False,
+                                tools_changed=False,
+                            ),
+                            experimental_capabilities={},
+                        ),
+                    ),
+                )
+        except asyncio.CancelledError:
+            logger.info("Server cancelled, shutting down gracefully")
+        except Exception as e:
+            logger.error(f"Server error: {e}", exc_info=True)
+            raise
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}", exc_info=True)
+        raise
+    finally:
+        if youtube_tools:
+            try:
+                await youtube_tools.cleanup()
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

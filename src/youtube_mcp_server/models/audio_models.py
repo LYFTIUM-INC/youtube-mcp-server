@@ -1,0 +1,624 @@
+"""
+Audio analysis models for speech recognition, sound classification, and audio pattern detection.
+"""
+
+import os
+import numpy as np
+from typing import List, Dict, Tuple, Optional, Any, Union
+from dataclasses import dataclass
+from pathlib import Path
+import os
+import logging
+
+# Import dependencies with graceful fallbacks
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
+
+try:
+    import torch
+    import torch.nn as nn
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+try:
+    from transformers import pipeline
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+
+try:
+    from pydub import AudioSegment
+    PYDUB_AVAILABLE = True
+except ImportError:
+    PYDUB_AVAILABLE = False
+
+try:
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.cluster import DBSCAN
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class AudioEvent:
+    """Represents a detected audio event."""
+    event_type: str
+    start_time: float
+    end_time: float
+    confidence: float
+    description: str
+    metadata: Dict[str, Any]
+
+@dataclass
+class SpeechSegment:
+    """Represents a speech segment from transcription."""
+    text: str
+    start_time: float
+    end_time: float
+    confidence: float
+    language: str
+    speaker_id: Optional[str] = None
+
+@dataclass
+class SoundPattern:
+    """Represents an identified sound pattern."""
+    pattern_type: str
+    timestamps: List[Tuple[float, float]]
+    confidence: float
+    characteristics: Dict[str, Any]
+
+class WhisperTranscriber:
+    """
+    OpenAI Whisper-based speech recognition and transcription.
+    Provides accurate speech-to-text with timestamp information.
+    """
+    
+    def __init__(self, 
+                 model_size: str = "base",
+                 device: str = "auto",
+                 model_cache_dir: Optional[Path] = None):
+        self.model_size = model_size
+        self.device = device if device != "auto" else ("cpu" if os.environ.get("FORCE_CPU") or os.environ.get("TORCH_DEVICE") == "cpu" else ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model_cache_dir = model_cache_dir or Path("model_cache")
+        self.model_cache_dir.mkdir(exist_ok=True)
+        
+        # Load Whisper model
+        self._load_model()
+    
+    def _load_model(self):
+        """Load the Whisper model."""
+        if not WHISPER_AVAILABLE:
+            logger.warning("Whisper not available - speech recognition disabled")
+            self.model = None
+            return
+        
+        if not TORCH_AVAILABLE:
+            logger.warning("PyTorch not available - speech recognition disabled")
+            self.model = None
+            return
+            
+        try:
+            # Force CPU usage if environment variables are set
+            force_cpu = (
+                os.environ.get("FORCE_CPU") == "1" or 
+                os.environ.get("TORCH_DEVICE") == "cpu" or
+                os.environ.get("CUDA_VISIBLE_DEVICES") == "" or
+                self.device == "cpu"
+            )
+            
+            if force_cpu:
+                logger.info("Loading Whisper model on CPU (forced by environment)")
+                self.model = whisper.load_model(self.model_size, device="cpu", download_root=None)
+                self.device = "cpu"
+            else:
+                # Try GPU first, fall back to CPU
+                try:
+                    if torch.cuda.is_available():
+                        logger.info(f"Loading Whisper model on GPU: {self.device}")
+                        self.model = whisper.load_model(self.model_size, device=self.device)
+                    else:
+                        logger.info("CUDA not available, loading Whisper model on CPU")
+                        self.model = whisper.load_model(self.model_size, device="cpu")
+                        self.device = "cpu"
+                except Exception as gpu_error:
+                    logger.warning(f"Failed to load model on GPU, falling back to CPU: {gpu_error}")
+                    self.model = whisper.load_model(self.model_size, device="cpu")
+                    self.device = "cpu"
+            
+            logger.info(f"Successfully loaded Whisper {self.model_size} model on {self.device}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load Whisper model: {e}", exc_info=True)
+            self.model = None
+    
+    def transcribe_audio(self, audio_path: str, 
+                        language: Optional[str] = None,
+                        word_timestamps: bool = True) -> List[SpeechSegment]:
+        """
+        Transcribe audio file to text with timestamps.
+        
+        Args:
+            audio_path: Path to audio file
+            language: Target language (auto-detect if None)
+            word_timestamps: Include word-level timestamps
+            
+        Returns:
+            List of speech segments with timestamps
+        """
+        if not self.model:
+            logger.warning("Whisper model not available for transcription")
+            return []
+            
+        try:
+            # Transcribe with Whisper
+            result = self.model.transcribe(
+                audio_path,
+                language=language,
+                word_timestamps=word_timestamps,
+                verbose=False
+            )
+            
+            segments = []
+            for segment in result.get('segments', []):
+                segments.append(SpeechSegment(
+                    text=segment['text'].strip(),
+                    start_time=segment['start'],
+                    end_time=segment['end'],
+                    confidence=segment.get('confidence', 0.0),
+                    language=result.get('language', 'unknown')
+                ))
+            
+            logger.info(f"Transcribed {len(segments)} speech segments")
+            return segments
+            
+        except Exception as e:
+            logger.error(f"Transcription failed: {e}")
+            raise
+    
+    def detect_speech_segments(self, audio_path: str) -> List[Tuple[float, float]]:
+        """
+        Detect speech segments in audio (voice activity detection).
+        
+        Args:
+            audio_path: Path to audio file
+            
+        Returns:
+            List of (start_time, end_time) tuples for speech segments
+        """
+        if not LIBROSA_AVAILABLE:
+            logger.warning("Librosa not available - speech segment detection disabled")
+            return []
+            
+        try:
+            # Load audio
+            audio, sr = librosa.load(audio_path, sr=16000)
+            
+            # Simple VAD using energy and zero-crossing rate
+            frame_length = int(0.025 * sr)  # 25ms frames
+            hop_length = int(0.010 * sr)    # 10ms hop
+            
+            # Calculate features
+            energy = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)[0]
+            zcr = librosa.feature.zero_crossing_rate(audio, frame_length=frame_length, hop_length=hop_length)[0]
+            
+            # Normalize features
+            energy_norm = (energy - np.mean(energy)) / np.std(energy)
+            zcr_norm = (zcr - np.mean(zcr)) / np.std(zcr)
+            
+            # Simple thresholding for speech detection
+            speech_frames = (energy_norm > -0.5) & (zcr_norm < 1.0)
+            
+            # Convert frame indices to time segments
+            frame_times = librosa.frames_to_time(range(len(speech_frames)), sr=sr, hop_length=hop_length)
+            
+            # Find continuous speech segments
+            segments = []
+            start_time = None
+            
+            for i, is_speech in enumerate(speech_frames):
+                if is_speech and start_time is None:
+                    start_time = frame_times[i]
+                elif not is_speech and start_time is not None:
+                    segments.append((start_time, frame_times[i]))
+                    start_time = None
+            
+            # Handle case where speech continues to end
+            if start_time is not None:
+                segments.append((start_time, frame_times[-1]))
+            
+            return segments
+            
+        except Exception as e:
+            logger.error(f"Speech segment detection failed: {e}")
+            return []
+
+class SoundClassifier:
+    """
+    Environmental sound classification and audio pattern recognition.
+    Supports various sound types including birds, music, and environmental sounds.
+    """
+    
+    def __init__(self, 
+                 device: str = "auto",
+                 model_cache_dir: Optional[Path] = None):
+        # Force CPU usage if environment variables are set
+        force_cpu = (
+            os.environ.get("FORCE_CPU") == "1" or 
+            os.environ.get("TORCH_DEVICE") == "cpu" or
+            os.environ.get("CUDA_VISIBLE_DEVICES") == "" or
+            device == "cpu"
+        )
+        
+        if force_cpu:
+            self.device = "cpu"
+        elif device != "auto":
+            self.device = device
+        else:
+            self.device = "cuda" if TORCH_AVAILABLE and torch.cuda.is_available() else "cpu"
+            
+        self.model_cache_dir = model_cache_dir or Path("model_cache")
+        self.model_cache_dir.mkdir(exist_ok=True)
+        
+        # Initialize audio classification pipeline
+        self._init_classifier()
+    
+    def _init_classifier(self):
+        """Initialize audio classification models."""
+        if not TRANSFORMERS_AVAILABLE:
+            logger.warning("Transformers not available - audio classification disabled")
+            self.classifier = None
+            return
+            
+        try:
+            # Hugging Face audio classification pipeline
+            device_id = 0 if self.device == "cuda" and TORCH_AVAILABLE and torch.cuda.is_available() else -1
+            
+            logger.info(f"Initializing audio classification on device: {self.device} (device_id: {device_id})")
+            self.classifier = pipeline(
+                "audio-classification",
+                model="MIT/ast-finetuned-audioset-10-10-0.4593",
+                device=device_id
+            )
+            logger.info("Audio classification model loaded successfully")
+            
+        except Exception as e:
+            logger.warning(f"Failed to load HF audio classifier: {e}, falling back to CPU")
+            try:
+                # Fallback to CPU
+                self.classifier = pipeline(
+                    "audio-classification",
+                    model="MIT/ast-finetuned-audioset-10-10-0.4593",
+                    device=-1
+                )
+                self.device = "cpu"
+                logger.info("Audio classification model loaded on CPU (fallback)")
+            except Exception as cpu_error:
+                logger.error(f"Failed to load audio classifier on CPU: {cpu_error}")
+                self.classifier = None
+    
+    def classify_audio_segments(self, audio_path: str,
+                              segment_length: float = 5.0,
+                              overlap: float = 1.0,
+                              confidence_threshold: float = 0.3) -> List[AudioEvent]:
+        """
+        Classify audio into different sound types using sliding window.
+        
+        Args:
+            audio_path: Path to audio file
+            segment_length: Length of each segment in seconds
+            overlap: Overlap between segments in seconds
+            confidence_threshold: Minimum confidence for classification
+            
+        Returns:
+            List of classified audio events
+        """
+        if not self.classifier:
+            logger.warning("Audio classifier not available")
+            return []
+        
+        if not PYDUB_AVAILABLE:
+            logger.warning("Pydub not available - audio segment processing disabled")
+            return []
+        
+        try:
+            # Load audio
+            audio = AudioSegment.from_file(audio_path)
+            duration = len(audio) / 1000.0  # Convert to seconds
+            
+            events = []
+            current_time = 0.0
+            
+            while current_time < duration:
+                end_time = min(current_time + segment_length, duration)
+                
+                # Extract segment
+                start_ms = int(current_time * 1000)
+                end_ms = int(end_time * 1000)
+                segment = audio[start_ms:end_ms]
+                
+                # Save temporary segment
+                temp_path = self.model_cache_dir / f"temp_segment_{current_time:.2f}.wav"
+                segment.export(temp_path, format="wav")
+                
+                try:
+                    # Classify segment
+                    results = self.classifier(str(temp_path))
+                    
+                    # Process results
+                    for result in results:
+                        if result['score'] >= confidence_threshold:
+                            events.append(AudioEvent(
+                                event_type=result['label'],
+                                start_time=current_time,
+                                end_time=end_time,
+                                confidence=result['score'],
+                                description=f"Detected {result['label']} with {result['score']:.2f} confidence",
+                                metadata={'classification_model': 'MIT/ast-finetuned-audioset-10-10-0.4593'}
+                            ))
+                    
+                finally:
+                    # Clean up temp file
+                    if temp_path.exists():
+                        temp_path.unlink()
+                
+                current_time += segment_length - overlap
+            
+            logger.info(f"Classified {len(events)} audio events")
+            return events
+            
+        except Exception as e:
+            logger.error(f"Audio classification failed: {e}")
+            return []
+    
+    def detect_specific_sounds(self, audio_path: str,
+                             target_sounds: List[str],
+                             confidence_threshold: float = 0.5) -> List[AudioEvent]:
+        """
+        Detect specific sounds in audio.
+        
+        Args:
+            audio_path: Path to audio file
+            target_sounds: List of target sound types to detect
+            confidence_threshold: Minimum confidence for detection
+            
+        Returns:
+            List of detected target sound events
+        """
+        all_events = self.classify_audio_segments(
+            audio_path, 
+            confidence_threshold=confidence_threshold
+        )
+        
+        # Filter for target sounds
+        target_events = []
+        for event in all_events:
+            for target in target_sounds:
+                if target.lower() in event.event_type.lower():
+                    target_events.append(event)
+                    break
+        
+        return target_events
+
+class AudioAnalyzer:
+    """
+    Comprehensive audio analysis combining multiple techniques.
+    Provides high-level interface for all audio processing tasks.
+    """
+    
+    def __init__(self, 
+                 whisper_model_size: str = "base",
+                 device: str = "auto",
+                 model_cache_dir: Optional[Path] = None):
+        # Force CPU usage if environment variables are set
+        force_cpu = (
+            os.environ.get("FORCE_CPU") == "1" or 
+            os.environ.get("TORCH_DEVICE") == "cpu" or
+            os.environ.get("CUDA_VISIBLE_DEVICES") == "" or
+            device == "cpu"
+        )
+        
+        if force_cpu:
+            self.device = "cpu"
+        elif device != "auto":
+            self.device = device
+        else:
+            self.device = "cuda" if TORCH_AVAILABLE and torch.cuda.is_available() else "cpu"
+            
+        self.model_cache_dir = model_cache_dir or Path("model_cache")
+        self.model_cache_dir.mkdir(exist_ok=True)
+        
+        # Initialize sub-analyzers
+        self.transcriber = WhisperTranscriber(whisper_model_size, self.device, model_cache_dir)
+        self.classifier = SoundClassifier(self.device, model_cache_dir)
+    
+    def analyze_audio(self, audio_path: str,
+                     include_transcription: bool = True,
+                     include_classification: bool = True,
+                     target_sounds: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Comprehensive audio analysis.
+        
+        Args:
+            audio_path: Path to audio file
+            include_transcription: Whether to include speech transcription
+            include_classification: Whether to include sound classification
+            target_sounds: Specific sounds to detect
+            
+        Returns:
+            Dictionary containing all analysis results
+        """
+        results = {
+            'audio_path': audio_path,
+            'analysis_timestamp': np.datetime64('now').item(),
+            'speech_segments': [],
+            'audio_events': [],
+            'sound_patterns': [],
+            'metadata': {}
+        }
+        
+        try:
+            # Get audio metadata
+            audio = AudioSegment.from_file(audio_path)
+            results['metadata'] = {
+                'duration': len(audio) / 1000.0,
+                'sample_rate': audio.frame_rate,
+                'channels': audio.channels,
+                'format': audio_path.split('.')[-1]
+            }
+            
+            # Speech transcription
+            if include_transcription:
+                try:
+                    speech_segments = self.transcriber.transcribe_audio(audio_path)
+                    results['speech_segments'] = [
+                        {
+                            'text': seg.text,
+                            'start_time': seg.start_time,
+                            'end_time': seg.end_time,
+                            'confidence': seg.confidence,
+                            'language': seg.language
+                        }
+                        for seg in speech_segments
+                    ]
+                    logger.info(f"Transcribed {len(speech_segments)} speech segments")
+                except Exception as e:
+                    logger.error(f"Transcription failed: {e}")
+            
+            # Sound classification
+            if include_classification:
+                try:
+                    if target_sounds:
+                        audio_events = self.classifier.detect_specific_sounds(
+                            audio_path, target_sounds
+                        )
+                    else:
+                        audio_events = self.classifier.classify_audio_segments(audio_path)
+                    
+                    results['audio_events'] = [
+                        {
+                            'event_type': event.event_type,
+                            'start_time': event.start_time,
+                            'end_time': event.end_time,
+                            'confidence': event.confidence,
+                            'description': event.description,
+                            'metadata': event.metadata
+                        }
+                        for event in audio_events
+                    ]
+                    logger.info(f"Detected {len(audio_events)} audio events")
+                except Exception as e:
+                    logger.error(f"Audio classification failed: {e}")
+            
+            # Analyze patterns
+            results['sound_patterns'] = self._analyze_sound_patterns(results)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Audio analysis failed: {e}")
+            results['error'] = str(e)
+            return results
+    
+    def _analyze_sound_patterns(self, analysis_results: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Analyze patterns in detected audio events."""
+        patterns = []
+        
+        # Group similar events
+        events = analysis_results.get('audio_events', [])
+        if not events:
+            return patterns
+        
+        # Simple pattern detection: repeating sound types
+        event_types = {}
+        for event in events:
+            event_type = event['event_type']
+            if event_type not in event_types:
+                event_types[event_type] = []
+            event_types[event_type].append((event['start_time'], event['end_time']))
+        
+        # Identify patterns with multiple occurrences
+        for event_type, timestamps in event_types.items():
+            if len(timestamps) >= 2:  # At least 2 occurrences
+                patterns.append({
+                    'pattern_type': f"recurring_{event_type}",
+                    'timestamps': timestamps,
+                    'confidence': min(1.0, len(timestamps) / 10.0),
+                    'characteristics': {
+                        'frequency': len(timestamps),
+                        'total_duration': sum(end - start for start, end in timestamps),
+                        'average_duration': np.mean([end - start for start, end in timestamps])
+                    }
+                })
+        
+        return patterns
+    
+    def find_audio_pattern(self, audio_path: str, 
+                          pattern_description: str,
+                          context_window: float = 2.0) -> List[Tuple[float, float]]:
+        """
+        Find specific audio patterns using natural language description.
+        
+        Args:
+            audio_path: Path to audio file
+            pattern_description: Natural language description of desired pattern
+            context_window: Seconds to include before/after pattern
+            
+        Returns:
+            List of (start_time, end_time) tuples for matching patterns
+        """
+        # Analyze audio comprehensively
+        analysis = self.analyze_audio(audio_path)
+        
+        # Search in speech segments
+        speech_matches = []
+        for segment in analysis.get('speech_segments', []):
+            if self._matches_description(segment['text'], pattern_description):
+                start = max(0, segment['start_time'] - context_window)
+                end = segment['end_time'] + context_window
+                speech_matches.append((start, end))
+        
+        # Search in audio events
+        event_matches = []
+        for event in analysis.get('audio_events', []):
+            if self._matches_description(event['event_type'], pattern_description):
+                start = max(0, event['start_time'] - context_window)
+                end = event['end_time'] + context_window
+                event_matches.append((start, end))
+        
+        # Combine and deduplicate
+        all_matches = speech_matches + event_matches
+        if not all_matches:
+            return []
+        
+        # Merge overlapping segments
+        all_matches.sort()
+        merged = [all_matches[0]]
+        
+        for start, end in all_matches[1:]:
+            if start <= merged[-1][1]:  # Overlapping
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        
+        return merged
+    
+    def _matches_description(self, text: str, description: str) -> bool:
+        """Simple text matching for pattern descriptions."""
+        text_lower = text.lower()
+        desc_lower = description.lower()
+        
+        # Simple keyword matching
+        keywords = desc_lower.split()
+        return any(keyword in text_lower for keyword in keywords)

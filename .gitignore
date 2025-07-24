@@ -1,0 +1,180 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# YouTube MCP specific
+youtube_cache/
+downloads/
+output/
+*.log
+*.db
+*.sqlite3
+download_cache/
+model_cache/
+temp_processing/
+test_cache/
+test_errors/
+troubleshooting_results.json
+yolov8n.pt
+
+# Environment and secrets
+.env
+.env.*
+*.env
+massive-tuner-*.json
+*service-account*.json
+*credentials*.json
+
+# Test files with hardcoded keys
+test_youtube_mcp.py
+test_advanced_features_real.py
+test_*_real.py
+troubleshoot_*.py
+
+# MCP specific files
+mcp_server.py
+simple_mcp.py
+minimal_youtube_test.py
+test_mcp_*.py
+
+# Local development files
+activate_env.sh
+setup_venv.sh
+setup_claude_desktop.py
+setup_cline.py
+claude_desktop_config*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.vim
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Package files
+*.whl
+*.tar.gz
