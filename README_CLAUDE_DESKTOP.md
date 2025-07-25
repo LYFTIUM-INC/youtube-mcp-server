@@ -18,7 +18,7 @@ The YouTube MCP server only needs a **Google API Key** - no service account requ
       ],
       "cwd": "/home/dell/coding/mcp/youtube-mcp",
       "env": {
-        "GOOGLE_API_KEY": "AIzaSyA8CQqjzEmr4Qdy03ztnbGR0x2BwsvKrdA",
+        "GOOGLE_API_KEY": "your-google-api-key-here",
         "PYTHONPATH": "/home/dell/coding/mcp/youtube-mcp/src"
       }
     }
@@ -49,7 +49,7 @@ If you prefer to use the virtual environment Python directly:
       ],
       "cwd": "/home/dell/coding/mcp/youtube-mcp",
       "env": {
-        "GOOGLE_API_KEY": "AIzaSyA8CQqjzEmr4Qdy03ztnbGR0x2BwsvKrdA",
+        "GOOGLE_API_KEY": "your-google-api-key-here",
         "PYTHONPATH": "/home/dell/coding/mcp/youtube-mcp/src"
       }
     }

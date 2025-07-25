@@ -39,7 +39,7 @@ Your current Claude Desktop configuration **will NOT properly load the advanced 
       "args": ["/home/dell/coding/mcp/youtube-mcp/mcp_server.py"],
       "cwd": "/home/dell/coding/mcp/youtube-mcp",
       "env": {
-        "GOOGLE_API_KEY": "AIzaSyA8CQqjzEmr4Qdy03ztnbGR0x2BwsvKrdA",
+        "GOOGLE_API_KEY": "your-google-api-key-here",
         "PYTHONPATH": "/home/dell/coding/mcp/youtube-mcp/src"
       }
     }
@@ -56,7 +56,7 @@ Your current Claude Desktop configuration **will NOT properly load the advanced 
       "args": ["/home/dell/coding/mcp/youtube-mcp/scripts/run_server.py"],
       "cwd": "/home/dell/coding/mcp/youtube-mcp",
       "env": {
-        "GOOGLE_API_KEY": "AIzaSyA8CQqjzEmr4Qdy03ztnbGR0x2BwsvKrdA",
+        "GOOGLE_API_KEY": "your-google-api-key-here",
         "PYTHONPATH": "/home/dell/coding/mcp/youtube-mcp/src",
         "PYTHONUNBUFFERED": "1",
         "VIRTUAL_ENV": "/home/dell/coding/mcp/youtube-mcp/venv",
